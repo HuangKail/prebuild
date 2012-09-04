@@ -19,7 +19,7 @@ class ComponentDef{
             return;
         }
         $fileName = "{$componentPath}/require.php";
-        $this->definition = include_once($fileName);
+        $this->definition = include($fileName);
 
     }
     private function getDependencies(){

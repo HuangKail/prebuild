@@ -16,7 +16,7 @@ class TestProcesser{
     private $jsOverrideVariable = '', $cssOverridePackageName = '', $fileContent;
 
     public function TestProcesser($pageRootPath, $moduleRootPath, $componentRootPath, 
-                $pageName, $fileHelper, $staticPath, $templatePath){
+                $pageName, $fileHelper, $staticPath, $templatePath, &$definition, $module){
 
         $this->pageRootPath = $pageRootPath;
         $this->moduleRootPath = $moduleRootPath;
@@ -24,6 +24,7 @@ class TestProcesser{
         $this->pageName = $pageName;
         $this->fileHelper = $fileHelper;
         $this->product = 'unittest';
+        $this->module = $module;
 
         $staticPath = $this->adjustPath(trim($staticPath));
         $templatePath = $this->adjustPath(trim($templatePath));
@@ -33,9 +34,13 @@ class TestProcesser{
 
         $this->mode = 'debug';
 
-        $this->pageDef = new PageDef($pageRootPath, $pageName, $fileHelper);            
+        $this->pageDef = new PageDef($pageRootPath, $pageName, $fileHelper, $definition);            
     }
     public function process(){
+        if (!is_dir("{$this->moduleRootPath}/{$this->module}/unittest")){
+            echo "there no unittest file in [$module] module\n";
+            die(1);
+        }
         $filePath = $this->pageDef->getFilePath();
         //
         // step 1: 先分析page template，得到所有的token，variable，type
@@ -131,9 +136,8 @@ class TestProcesser{
                 $value .= $this->writeStaticIncludingStr($packageName, $type);
             }
         }
-        if($variable == $this->jsOverrideVariable){
-            $value .= $this->generateFisConfigFile();
-            $value .= $this->generatePageJsFile();
+        if($variable == 'unittest_script'){
+            $value .= $this->generateUnittestFile();
         }
         $fileContent = str_replace($token, $value, $fileContent);
     }
@@ -170,7 +174,9 @@ class TestProcesser{
         else if ($type == 'css'){
             $includeFileContent = "<link type=\"text/css\" rel=\"stylesheet\" href=\"{$this->pageDef->getCssPath()}/{$this->pageName}_{$packageName}.css\" />";
         }
-        file_put_contents("{$this->templatePath}/inc/{$this->pageName}_{$type}_{$packageName}.inc", $includeFileContent);
+
+        file_put_contents("{$this->templatePath}/inc/{$this->pageName}_{$type}_{$packageName}.inc", 
+                $includeFileContent);
         $retStr = "<&include file=\"{$this->product}/inc/{$this->pageName}_{$type}_{$packageName}.inc\"&>";
         return $retStr;
     }
@@ -231,6 +237,7 @@ class TestProcesser{
             $cssPackage;
             $jsPackage;
             $firstPackageName = null;
+
             foreach ($modules as $packageName => $moduleList) {
                 if(is_null($firstPackageName)){
                     $firstPackageName = $packageName;
@@ -300,9 +307,13 @@ class TestProcesser{
                     $this->moduleProcesser->processModuleJs($moduleName, $packageName);
                 }
                 array_push($packageLoaded, $packageName);
+                if(isset($this->moduleProcesser->fileList[$packageName]['js']) && 
+                    count($this->moduleProcesser->fileList[$packageName]['js']) > 0){
+     
+                    $this->generateJsPackageFile($packageName, $this->moduleProcesser->fileList[$packageName]['js'], 
+                        $this->pageDef->getJsFileType($packageName) == 'inline');
+                }
             }
-            $this->generateJsPackageFile($packageName, $this->moduleProcesser->fileList[$packageName]['js'], 
-                    $this->pageDef->getJsFileType($packageName) == 'inline');
         }
         foreach ($jsFiles as $key => $jsFile) {
             $packageName = $key;
@@ -312,18 +323,27 @@ class TestProcesser{
             foreach ($jsFile['modules'] as $moduleName) {
                 $this->moduleProcesser->processModuleJs($moduleName, $packageName);
             }
-            $this->generateJsPackageFile($packageName, $this->moduleProcesser->fileList[$packageName]['js'], 
-                    $this->pageDef->getJsFileType($packageName) == 'inline');
+            if(isset($this->moduleProcesser->fileList[$packageName]['js']) && 
+                    count($this->moduleProcesser->fileList[$packageName]['js']) > 0){
+                
+                $this->generateJsPackageFile($packageName, $this->moduleProcesser->fileList[$packageName]['js'], 
+                        $this->pageDef->getJsFileType($packageName) == 'inline');
+            }  
         }
     }
     private function processCss($cssFiles, &$cssFilesOrderList){
         $packageLoaded = array();
         foreach ($cssFilesOrderList as $packageName) {
-            if(isset($jsFiles[$packageName])){
-                foreach ($jsFiles[$packageName]['modules'] as $moduleName) {
-                    $this->moduleProcesser->processModuleJs($moduleName, $packageName);
+            if(isset($cssFiles[$packageName])){
+                foreach ($cssFiles[$packageName] as $moduleName) {
+                    $this->moduleProcesser->processModuleCss($moduleName, $packageName);
                 }
                 array_push($packageLoaded, $packageName);
+                if(isset($this->moduleProcesser->fileList[$packageName]['css']) && 
+                    count($this->moduleProcesser->fileList[$packageName]['css']) > 0){
+                
+                    $this->generateCssFile($packageName, $this->moduleProcesser->fileList[$packageName]['css']);
+                }
             }
         }
         foreach ($cssFiles as $key => $cssModuls) {
@@ -334,7 +354,11 @@ class TestProcesser{
                 }
                 $this->moduleProcesser->processModuleCss($moduleName, $packageName);
             }
-            $this->generateCssFile($packageName, $this->moduleProcesser->fileList[$packageName]['css']);
+            if(isset($this->moduleProcesser->fileList[$packageName]['css']) && 
+                    count($this->moduleProcesser->fileList[$packageName]['css']) > 0){
+                
+                $this->generateCssFile($packageName, $this->moduleProcesser->fileList[$packageName]['css']);
+            }
         }
     }
     private function generateJsPackageFile($fileName, &$fileList, $isInline){
@@ -370,99 +394,74 @@ class TestProcesser{
         foreach ($fileList as $file) {
             $outputStr .= "@import url(\"$file\");\n";
         }
-        if($fileName == $this->cssOverridePackageName){
-            $overrideList = $this->copyCssOverrideFiles();
-            foreach ($overrideList as $file) {
-                $outputStr .= "@import url(\"$file\");\n";
-            }
-        }
         file_put_contents("{$this->staticPath}/css/{$this->pageName}_{$fileName}.css", $outputStr);
     }
-    private function generateFisConfigFile(){
-        $fileList = &$this->moduleProcesser->fileList;
-        $path = '';
-        $num = 0;
-        foreach($fileList as $packageName => $packageList){
-            if(isset($packageList['js'])){
-                if($num++ > 0){
-                    $path .= ',';
-                }
-                $len = count($packageList['js']);
-                $modules = '';
-                foreach ($packageList['js'] as $i => $modulePath) {
-                    $moduleId = substr($modulePath, 0, strpos($modulePath, '.js'));
-                    if($i < $len - 1){
-                        $modules .= "'{$moduleId}',";
-                    }
-                    else{
-                        $modules .= "'{$moduleId}'";
-                    }
-                }
-                $path .= "\"{$this->pageDef->getJsPath()}/{$packageName}.js?v=md5\":[{$modules}]";
-            }
-        }   
-        $fileContent = "F._fileMap({ {$path} })";
-        $fileName = "{$this->pageDef->getName()}_fileMap.js";
-        $filePath = "{$this->staticPath}/js/{$fileName}";
-        
-        file_put_contents($filePath, $fileContent);
-        
-        $incFileContent = "<script type=\"text/javascript\" src=\"{$this->pageDef->getJsPath()}/{$fileName}\" InlineContent></script>";
-        
-        file_put_contents("{$this->templatePath}/inc/{$this->pageDef->getName()}_fisconfig.inc", $incFileContent);
 
-        return "<&include file=\"{$this->product}/inc/{$this->pageDef->getName()}_fisconfig.inc\"&>";
-    }
-    private function generatePageJsFile(){
+    private function generateUnittestFile(){
         $dirPath = dirname(__FILE__);        
-        $fileName = "{$this->pageDef->getName()}_entrypoint.js";
-        $fileList = $this->copyJsOverrideFiles();
+        $fileName = "{$this->pageDef->getName()}_unittest.js";
+
+        $fileList = array();
+        $this->makeUnittestJsDirectory();
+        $this->copyUnittestFile("{$this->moduleRootPath}/{$this->module}/unittest/",
+                $fileList);
+
+        
 
         $fileContent = file_get_contents("{$dirPath}/externalJsTemplate.js") . "\n";
         foreach ($fileList as $file) {
-            if($this->mode == 'debug'){
-                $fileContent .= "importScript(\"$file\");\n";
-            }
-            else {
-                $fileContent .= file_get_contents("{$this->staticPath}/js/{$file}");
-            }
+            $fileContent .= "importScript(\"$file\");\n";
         }
 
         file_put_contents("{$this->staticPath}/js/{$fileName}", $fileContent);
-        $incFileContent = "<script type=\"text/javascript\" src=\"{$this->pageDef->getJsPath()}/{$fileName}\" InlineContent></script>";
-        file_put_contents("{$this->templatePath}/inc/{$this->pageDef->getName()}_entrypoint.inc", $incFileContent);
-
-        return "<&include file=\"{$this->product}/inc/{$this->pageDef->getName()}_entrypoint.inc\"&>";
+        $incFileContent = "<script type=\"text/javascript\" src=\"{$this->pageDef->getJsPath()}/{$fileName}\"></script>";
+        file_put_contents("{$this->templatePath}/inc/js_{$this->pageDef->getName()}_unittest.inc", 
+                $incFileContent);
+        return "<&include file=\"{$this->product}/inc/js_{$this->pageDef->getName()}_unittest.inc\"&>";
     }
-    private function & copyJsOverrideFiles(){
-        $fileList = $this->pageDef->getJsOverrideFiles();
-        $jsOverrideFiles = array();
-        $toPath = "{$this->staticPath}/js/page_{$this->pageName}";
-        if(!is_dir($toPath)){
-            mkdir($toPath, 0777);
+    private function copyUnittestFile($path, &$fileList, $dir=null){
+        print_r($fileList);
+        $dirObj =  opendir($path);
+        $fileName = '';
+        $hasRunJs = FALSE;
+        while( ($fileName = readdir($dirObj)) != FALSE ){
+            //
+            // including '.js' and has no .js extension
+            //
+            if(strpos($fileName, '.js') != FALSE){
+                if($fileName === 'run.js' && is_null($dir)){
+                    $hasRunJs = true;
+                    continue;
+                }
+                $dirPath = is_null($dir) ? '' : $dir;
+                $this->fileHelper->doCopy("{$path}/{$fileName}", 
+                        "{$this->staticPath}/js/{$this->module}_unittest/{$dirPath}/", 
+                        $fileName);
+                $fileList[] = "{$this->module}_unittest/{$dirPath}/$fileName";
+            }
+            //
+            // recursion for copying directory
+            //
+            else if(strpos($fileName, '.') !== 0 && is_dir("{$path}/{$fileName}")){
+                $dirPath = is_null($dir) ? $fileName : "{$dir}/{$fileName}";
+                $this->makeUnittestJsDirectory($dirPath);
+                $this->copyUnittestFile("{$path}/{$fileName}", $fileList, $dirPath);
+            }
         }
-        foreach($fileList as $file){
-            $this->fileHelper->doCopy($file['path'], $toPath, $file['name']);
-            array_push($jsOverrideFiles, "page_{$this->pageName}/{$file['name']}");
+        if($hasRunJs){
+            $this->fileHelper->doCopy("{$path}/run.js", 
+                    "{$this->staticPath}/js/{$this->module}_unittest/", 
+                    'run.js');
+            $fileList[] = "{$this->module}_unittest/run.js";
         }
-        return $jsOverrideFiles;
     }
-    private function & copyCssOverrideFiles(){
-        $fileList = $this->pageDef->getCssOverrideFiles();
-        $CssOverrideFiles = array();
-        $toPath = "$this->staticPath/css";
-        if(!is_dir($toPath)){
-            mkdir($toPath, 0777);
+    private function makeUnittestJsDirectory($dir=null){
+        $unittestPath = "{$this->staticPath}/js/{$this->module}_unittest/";
+        if(!is_null($dir)){
+            $unittestPath .= $dir;
         }
-        foreach($fileList as $file){
-            $this->fileHelper->doCopy($file['path'], $toPath, 
-                    "page_{$this->pageName}_{$file['name']}");
-            array_push($CssOverrideFiles, "page_{$this->pageName}_{$file['name']}");
+        if(!is_dir($unittestPath)){
+            mkdir($unittestPath);
         }
-        $this->copyImgOverrideFiles();
-        return $CssOverrideFiles;
-    }
-    private function copyImgOverrideFiles(){
-
     }
 }

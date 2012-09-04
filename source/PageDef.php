@@ -2,21 +2,22 @@
 class PageDef{
     private $pageName, $name, $isCssSeparated, $isJsSeparated, $isManual;
 
-    private $pageRootPath, $moduleRootPath, $componentRootPath;
+    private $pageRootPath;
 
     private $definition, $moduleProcesser, $fileHelper, $filePath;
 
     private $jsPath, $cssPath;
     
-    public function PageDef($pageRootPath, $moduleRootPath, $componentRootPath, 
-            $pageName, $fileHelper){
+    public function PageDef($pageRootPath, $pageName, $fileHelper, &$definition = null){
 
         $this->pageRootPath = $pageRootPath;
-        $this->moduleRootPath = $moduleRootPath;
-        $this->componentRootPath = $componentRootPath;
         $this->pageName = $pageName;
+        if(is_array($definition)){
+            $this->definition = $definition;
+        }
         $this->getDefinition($pageName);
-        $this->reservedWords = array('js','css','name', 'tmpl', 'modules', 'without', 'inlinejs', 'pack', 'jsPath', 'cssPath');
+        $this->reservedWords = array('js','css','name', 'tmpl', 'modules', 'without', 
+                'inlinejs', 'pack', 'jsPath', 'cssPath');
     }
 
     public function processPage(){
@@ -46,7 +47,10 @@ class PageDef{
         if(is_dir($path)){
             $fileName = "$path/definition.php";
             if(file_exists($fileName)){
-                $definition = $this->definition = include_once($fileName);
+                if(!isset($this->definition)){
+                    $this->definition = include_once($fileName);                    
+                }
+                $definition = &$this->definition;
                 $this->name = isset($this->definition['name']) ? 
                         $this->definition['name'] : $pageName;
             }
@@ -161,36 +165,46 @@ class PageDef{
         return $this->cssPath;
     }
     public function & getJsOverrideFiles(){
-        $pageName = $this->pageName;
-        $rootPath = $this->pageRootPath;
-        $jsDirPath = "$rootPath/$pageName/static/js";
-        $jsOverrideFiles = array();
-        if (is_dir($jsDirPath)) {
-            $dirObj = opendir($jsDirPath);
-            while( ($fileName = readdir($dirObj)) != FALSE ){
-                $extension = substr($fileName, strrpos($fileName, '.'));
-                if($extension == '.js'){
-                    array_push($jsOverrideFiles, array("path"=>"$jsDirPath/$fileName", "name" => $fileName));
+        if(!isset($this->jsOverrideFiles)){
+            $pageName = $this->pageName;
+            $rootPath = $this->pageRootPath;
+            $jsDirPath = "$rootPath/$pageName/static/js";
+            $jsOverrideFiles = array();
+            if (is_dir($jsDirPath)) {
+                $dirObj = opendir($jsDirPath);
+                while( ($fileName = readdir($dirObj)) != FALSE ){
+                    $extension = substr($fileName, strrpos($fileName, '.'));
+                    if($extension == '.js'){
+                        array_push($jsOverrideFiles, array("path"=>"$jsDirPath/$fileName", "name" => $fileName));
+                    }
                 }
+                closedir($dirObj);
             }
+            $this->jsOverrideFiles = &$jsOverrideFiles;
         }
-        return $jsOverrideFiles;
+        
+        return $this->jsOverrideFiles;
     }
     public function & getCssOverrideFiles(){
-        $pageName = $this->pageName;
-        $rootPath = $this->pageRootPath;
-        $cssDirPath = "$rootPath/$pageName/static/css";
-        $cssOverrideFiles = array();
-        if (is_dir($cssDirPath)) {
-            $dirObj = opendir($cssDirPath);
-            while( ($fileName = readdir($dirObj)) != FALSE ){
-                $extension = substr($fileName, strrpos($fileName, '.'));
-                if($extension == '.css'){
-                    array_push($cssOverrideFiles, array("path"=>"$cssDirPath/$fileName", "name" => $fileName));
+        if(!isset($this->cssOverrideFiles)){
+            $pageName = $this->pageName;
+            $rootPath = $this->pageRootPath;
+            $cssDirPath = "$rootPath/$pageName/static/css";
+            $cssOverrideFiles = array();
+            if (is_dir($cssDirPath)) {
+                $dirObj = opendir($cssDirPath);
+                while( ($fileName = readdir($dirObj)) != FALSE ){
+                    $extension = substr($fileName, strrpos($fileName, '.'));
+                    if($extension == '.css'){
+                        array_push($cssOverrideFiles, array("path"=>"$cssDirPath/$fileName", "name" => $fileName));
+                    }
                 }
+                closedir($dirObj);
             }
+            $this->cssOverrideFiles = &$cssOverrideFiles;
         }
-        return $cssOverrideFiles;
+        
+        return $this->cssOverrideFiles;
     }
     public function isCssSeparated(){
         if(!isset($this->isCssSeparated)){

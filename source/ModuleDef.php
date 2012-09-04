@@ -27,7 +27,7 @@ class ModuleDef{
             }
         }
         if($filePath != ''){
-            $this->definition = include_once($filePath);
+            $this->definition = include($filePath);
             isset($this->definition['name']) ? $this->name = $this->definition['name'] :
                     $this->name = substr($fileName, 0, strrpos($fileName, '.'));
 

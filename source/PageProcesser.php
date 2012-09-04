@@ -34,8 +34,7 @@ class PageProcesser{
 
         $this->mode = $mode;
 
-        $this->pageDef = new PageDef($pageRootPath, $moduleRootPath, $componentRootPath, 
-                $pageName, $fileHelper);
+        $this->pageDef = new PageDef($pageRootPath, $pageName, $fileHelper);            
     }
     public function process(){
         $filePath = $this->pageDef->getFilePath();
@@ -135,7 +134,9 @@ class PageProcesser{
         }
         if($variable == $this->jsOverrideVariable){
             $value .= $this->generateFisConfigFile();
-            $value .= $this->generatePageJsFile();
+            if( count($this->pageDef->getJsOverrideFiles()) >0 ){
+                $value .= $this->generatePageJsFile();                
+            }
         }
         $fileContent = str_replace($token, $value, $fileContent);
     }
@@ -233,6 +234,7 @@ class PageProcesser{
             $cssPackage;
             $jsPackage;
             $firstPackageName = null;
+
             foreach ($modules as $packageName => $moduleList) {
                 if(is_null($firstPackageName)){
                     $firstPackageName = $packageName;
@@ -302,9 +304,13 @@ class PageProcesser{
                     $this->moduleProcesser->processModuleJs($moduleName, $packageName);
                 }
                 array_push($packageLoaded, $packageName);
+                if(isset($this->moduleProcesser->fileList[$packageName]['js']) && 
+                    count($this->moduleProcesser->fileList[$packageName]['js']) > 0){
+     
+                    $this->generateJsPackageFile($packageName, $this->moduleProcesser->fileList[$packageName]['js'], 
+                        $this->pageDef->getJsFileType($packageName) == 'inline');
+                }
             }
-            $this->generateJsPackageFile($packageName, $this->moduleProcesser->fileList[$packageName]['js'], 
-                    $this->pageDef->getJsFileType($packageName) == 'inline');
         }
         foreach ($jsFiles as $key => $jsFile) {
             $packageName = $key;
@@ -314,18 +320,27 @@ class PageProcesser{
             foreach ($jsFile['modules'] as $moduleName) {
                 $this->moduleProcesser->processModuleJs($moduleName, $packageName);
             }
-            $this->generateJsPackageFile($packageName, $this->moduleProcesser->fileList[$packageName]['js'], 
-                    $this->pageDef->getJsFileType($packageName) == 'inline');
+            if(isset($this->moduleProcesser->fileList[$packageName]['js']) && 
+                    count($this->moduleProcesser->fileList[$packageName]['js']) > 0){
+                
+                $this->generateJsPackageFile($packageName, $this->moduleProcesser->fileList[$packageName]['js'], 
+                        $this->pageDef->getJsFileType($packageName) == 'inline');
+            }  
         }
     }
     private function processCss($cssFiles, &$cssFilesOrderList){
         $packageLoaded = array();
         foreach ($cssFilesOrderList as $packageName) {
-            if(isset($jsFiles[$packageName])){
-                foreach ($jsFiles[$packageName]['modules'] as $moduleName) {
-                    $this->moduleProcesser->processModuleJs($moduleName, $packageName);
+            if(isset($cssFiles[$packageName])){
+                foreach ($cssFiles[$packageName] as $moduleName) {
+                    $this->moduleProcesser->processModuleCss($moduleName, $packageName);
                 }
                 array_push($packageLoaded, $packageName);
+                if(isset($this->moduleProcesser->fileList[$packageName]['css']) && 
+                    count($this->moduleProcesser->fileList[$packageName]['css']) > 0){
+                
+                    $this->generateCssFile($packageName, $this->moduleProcesser->fileList[$packageName]['css']);
+                }
             }
         }
         foreach ($cssFiles as $key => $cssModuls) {
@@ -336,7 +351,11 @@ class PageProcesser{
                 }
                 $this->moduleProcesser->processModuleCss($moduleName, $packageName);
             }
-            $this->generateCssFile($packageName, $this->moduleProcesser->fileList[$packageName]['css']);
+            if(isset($this->moduleProcesser->fileList[$packageName]['css']) && 
+                    count($this->moduleProcesser->fileList[$packageName]['css']) > 0){
+                
+                $this->generateCssFile($packageName, $this->moduleProcesser->fileList[$packageName]['css']);
+            }
         }
     }
     private function generateJsPackageFile($fileName, &$fileList, $isInline){
@@ -432,7 +451,8 @@ class PageProcesser{
 
         file_put_contents("{$this->staticPath}/js/{$fileName}", $fileContent);
         $incFileContent = "<script type=\"text/javascript\" src=\"{$this->pageDef->getJsPath()}/{$fileName}\" InlineContent></script>";
-        file_put_contents("{$this->templatePath}/inc/{$this->pageDef->getName()}_entrypoint.inc", $incFileContent);
+        file_put_contents("{$this->templatePath}/inc/{$this->pageDef->getName()}_entrypoint.inc", 
+                $incFileContent);
 
         return "<&include file=\"{$this->product}/inc/{$this->pageDef->getName()}_entrypoint.inc\"&>";
     }

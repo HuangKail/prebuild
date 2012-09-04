@@ -1,5 +1,5 @@
 <?php
-include_once("./source/PageProcesser.php");
+include_once("./source/TestProcesser.php");
 include_once('./source/FileHelper.php');
 
 $templatePath = "../template";
@@ -8,10 +8,7 @@ $componentRootPath = "../components";
 $moduleRootPath = '../modules';
 $pageRootPath = '../pages';
 
-$isWin = strtolower(substr(PHP_OS, 0, 3)) == 'win';
-$removeCommand =  $isWin ? 'RD /S /Q' : 'rm -rf';
-
-$product = $siteDefinition['product'];
+$product = 'unittest';
 
 if(isset($argv[1]) && isset($argv[2])){
     $type = $argv[1];
@@ -23,29 +20,33 @@ if(!isset($module)){
 }
 $mode = 'debug';
 
-if (file_exists($templatePath)) {
-    $pathToBeDeleted = $templatePath;
-    if($isWin){
-        $pathToBeDeleted = str_replace('/', '\\', $pathToBeDeleted);
-    }
-    system("$removeCommand $pathToBeDeleted");
-}
-
-if (file_exists($staticPath)) {
-    $pathToBeDeleted = $staticPath;
-    if($isWin){
-        $pathToBeDeleted = str_replace('/', '\\', $pathToBeDeleted);
-    }
-    system("$removeCommand $pathToBeDeleted");
-}
 //
 // start merging templates
 //
 $fileHelper = new FileHelper($mode, $moduleRootPath, $staticPath, $templatePath, $componentRootPath);
 
-foreach ($siteDefinition['pages'] as $page) {
-    $pageProcesser = new PageProcesser($pageRootPath, $moduleRootPath, $componentRootPath, $page, 
-            $fileHelper, $staticPath, $templatePath, $product, $mode);
-    $pageProcesser->process();
-}
+$definition = array(
+        'name' => "unittest_page_{$module}",
+        'pageTitle' => 'unittest page',
+        
+        'modules' => array(
+            'framework' => array('qunit'),
+            'module_code' => array($module)
+        ),
+        'pack' => array(
+            'js'=> true,
+            'css'=> false
+        ),
+
+        'pageHeadScript' => array('framework', 'module_code'),
+        'pageHeadStyle' => array('framework'),
+        
+        'cssPath' => '<&$pDomain.static&>/static/princess/css/',
+        'jsPath' => '<&$pDomain.static&>/static/princess/js/',
+);
+
+$pageProcesser = new TestProcesser($pageRootPath, $moduleRootPath, $componentRootPath, 'unittest', 
+        $fileHelper, $staticPath, $templatePath, &$definition, $module);
+$pageProcesser->process();
+
 ?>
